@@ -44,4 +44,22 @@ function onGenerateConfirm() {
     closeGeneratePopup();
 }
 
-jQuery(async
+jQuery(async () => {
+    console.log(`[${extensionName}] Loading...`);
+
+    try {
+        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
+        $("#extensions_settings2").append(settingsHtml);
+
+        $("#wpm_enabled").on("input", onEnabledChange);
+        $("#wpm_generate_characters").on("click", openGeneratePopup);
+        $("#wpm_generate_confirm").on("click", onGenerateConfirm);
+        $("#wpm_generate_cancel").on("click", closeGeneratePopup);
+
+        loadSettings();
+
+        console.log(`[${extensionName}] ✅ Loaded successfully`);
+    } catch (error) {
+        console.error(`[${extensionName}] ❌ Failed to load:`, error);
+    }
+});
