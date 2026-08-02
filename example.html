@@ -9,6 +9,20 @@
                 <input id="wpm_enabled" type="checkbox" />
                 <label for="wpm_enabled">Enable World Population Manager</label>
             </div>
+
+            <div class="wpm-fields-section">
+                <b>Character Template Fields</b>
+                <p><small>Add, rename, or remove the fields used when generating NPCs.</small></p>
+                <div id="wpm_fields_list"></div>
+                <div class="wpm-add-field-row">
+                    <input id="wpm_new_field_name" type="text" placeholder="New field name (e.g. Occupation)" />
+                    <input id="wpm_add_field_btn" class="menu_button" type="submit" value="Add Field" />
+                </div>
+                <div class="wpm-fields-buttons-row">
+                    <input id="wpm_reset_fields_btn" class="menu_button" type="submit" value="Reset to Defaults" />
+                </div>
+            </div>
+
             <div class="wpm-generate-row">
                 <input id="wpm_generate_characters" class="menu_button" type="submit" value="Generate Characters" />
             </div>
