@@ -9,7 +9,26 @@
                 <input id="wpm_enabled" type="checkbox" />
                 <label for="wpm_enabled">Enable World Population Manager</label>
             </div>
-            <p><small>Toggle this and refresh — it should remember your choice.</small></p>
+            <div class="wpm-generate-row">
+                <input id="wpm_generate_characters" class="menu_button" type="submit" value="Generate Characters" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="wpm_generate_popup" class="wpm-popup" style="display:none;">
+    <div class="wpm-popup-inner">
+        <h3>Generate Characters</h3>
+
+        <label for="wpm_char_count">Total characters to generate</label>
+        <input id="wpm_char_count" type="number" min="1" max="1000" value="10" />
+
+        <label for="wpm_generate_instructions">Generation Instructions</label>
+        <textarea id="wpm_generate_instructions" rows="6" placeholder="e.g. I want a realistic university population. Include engineering students, athletes, artists, introverts, extroverts, international students, and people with believable flaws. Avoid making everyone exceptional."></textarea>
+
+        <div class="wpm-popup-buttons">
+            <input id="wpm_generate_confirm" class="menu_button" type="submit" value="Generate" />
+            <input id="wpm_generate_cancel" class="menu_button" type="submit" value="Cancel" />
         </div>
     </div>
 </div>
