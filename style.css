@@ -37,6 +37,17 @@
 .wpm-popup-inner textarea {
     width: 100%;
     box-sizing: border-box;
+    background: var(--SmartThemeBotMesBlurTintColor, #2b2b2b);
+    color: var(--SmartThemeBodyColor, #fff);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.wpm-popup-inner input[type="number"] {
+    max-width: 120px;
 }
 
 .wpm-popup-buttons {
