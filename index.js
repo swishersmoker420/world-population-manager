@@ -1,4 +1,4 @@
-// World Population Manager - Stage 6: Real NPC generation prompt (raw output only, no parsing/saving yet)
+// World Population Manager - Stage 7: Parse raw AI output into structured NPCs (not saved as lorebooks yet)
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
@@ -166,6 +166,60 @@ function buildGenerationPrompt(generationContext) {
     return lines.join("\n");
 }
 
+const NPC_TEMPLATE_FIELDS = [
+    "Name",
+    "Age",
+    "Height",
+    "Weight",
+    "Ethnicity",
+    "Religion",
+    "Hair",
+    "Skin",
+    "Figure",
+    "Accessories",
+    "Clothing style",
+    "Notable clothing combos",
+    "Speech",
+    "Other mannerisms",
+];
+
+function parseNpcBlocks(rawText) {
+    if (!rawText || typeof rawText !== "string") {
+        return [];
+    }
+
+    const blocks = rawText
+        .split(NPC_DELIMITER)
+        .map(b => b.trim())
+        .filter(b => b.length > 0);
+
+    return blocks.map(block => {
+        const fields = {};
+        const lines = block.split("\n");
+
+        let currentField = null;
+        for (const line of lines) {
+            const match = line.match(/^([A-Za-z /]+):\s*(.*)$/);
+            const matchedFieldName = match
+                ? NPC_TEMPLATE_FIELDS.find(f => f.toLowerCase() === match[1].trim().toLowerCase())
+                : null;
+
+            if (matchedFieldName) {
+                currentField = matchedFieldName;
+                fields[currentField] = match[2].trim();
+            } else if (currentField) {
+                fields[currentField] += " " + line.trim();
+            }
+        }
+
+        return {
+            name: fields["Name"] || "Unnamed NPC",
+            fields,
+            rawContent: block,
+        };
+    });
+}
+
 async function onGenerateConfirm() {
     const count = Number($("#wpm_char_count").val());
     const instructions = String($("#wpm_generate_instructions").val());
@@ -186,7 +240,11 @@ async function onGenerateConfirm() {
             quietToLoud: false,
         });
         console.log(`[${extensionName}] RAW generation output:`, result);
-        toastr.success("Generation finished - check console for raw output (not parsed/saved yet).", "World Population Manager");
+
+        const parsedNpcs = parseNpcBlocks(result);
+        console.log(`[${extensionName}] Parsed ${parsedNpcs.length} NPC(s) (requested ${count}):`, parsedNpcs);
+
+        toastr.success(`Parsed ${parsedNpcs.length}/${count} NPC(s). Check console to verify accuracy (not saved as lorebooks yet).`, "World Population Manager");
     } catch (error) {
         console.error(`[${extensionName}] Generation failed:`, error);
         toastr.error("Generation failed - check console.", "World Population Manager");
