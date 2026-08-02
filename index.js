@@ -1,10 +1,10 @@
-// World Population Manager - Stage 2: One simple setting (enabled checkbox)
+// World Population Manager - Stage 3: Generation window UI shell (no real generation yet)
 // Import from SillyTavern core
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
 
 // Extension name MUST match folder name
-const extensionName = "world-population-manager"; // ⚠️ must match the actual folder name under scripts/extensions/third-party/
+const extensionName = "world-population-manager";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
@@ -26,25 +26,22 @@ function onEnabledChange(event) {
     console.log(`[${extensionName}] Setting saved: enabled =`, value);
 }
 
-// Extension initialization
-jQuery(async () => {
-    console.log(`[${extensionName}] Loading...`);
+function openGeneratePopup() {
+    $("#wpm_generate_popup").show();
+}
 
-    try {
-        // Load HTML from file
-        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
+function closeGeneratePopup() {
+    $("#wpm_generate_popup").hide();
+}
 
-        // Append to settings panel (right column for UI extensions)
-        $("#extensions_settings2").append(settingsHtml);
+function onGenerateConfirm() {
+    const count = Number($("#wpm_char_count").val());
+    const instructions = String($("#wpm_generate_instructions").val());
 
-        // Bind checkbox event
-        $("#wpm_enabled").on("input", onEnabledChange);
+    console.log(`[${extensionName}] Generate requested:`, { count, instructions });
+    toastr.info(`Would generate ${count} character(s). (No AI call wired up yet.)`, "World Population Manager");
 
-        // Load saved settings
-        loadSettings();
+    closeGeneratePopup();
+}
 
-        console.log(`[${extensionName}] ✅ Loaded successfully`);
-    } catch (error) {
-        console.error(`[${extensionName}] ❌ Failed to load:`, error);
-    }
-});
+jQuery(async
