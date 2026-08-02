@@ -1,7 +1,7 @@
 // World Population Manager - Stage 4: Gather real context (character card + chat history)
 // Lorebook activation tracking is deliberately NOT included yet - see note below.
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
-import { saveSettingsDebounced } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const extensionName = "world-population-manager";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
@@ -9,6 +9,24 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 const defaultSettings = {
     enabled: false,
 };
+
+// HYPOTHESIS TO TEST: SillyTavern emits an event when world info entries activate
+// during generation, carrying the same entry objects we saw logged by world-info.js
+// (uid, world, comment, content, key, etc). We listen for it here and stash the
+// most recent batch. This needs to be confirmed against your actual SillyTavern
+// version - watch the console for "[world-population-manager] WI activation event
+// fired" and compare the count/content to the "[WI] Adding N entries to prompt"
+// log line from world-info.js during your next generation.
+let lastActivatedWorldInfo = [];
+
+if (event_types && event_types.WORLD_INFO_ACTIVATED) {
+    eventSource.on(event_types.WORLD_INFO_ACTIVATED, (entries) => {
+        lastActivatedWorldInfo = Array.isArray(entries) ? entries : [];
+        console.log(`[${extensionName}] WI activation event fired:`, lastActivatedWorldInfo);
+    });
+} else {
+    console.warn(`[${extensionName}] event_types.WORLD_INFO_ACTIVATED not found - this SillyTavern version may name it differently. Lorebook context will be empty until this is fixed.`);
+}
 
 async function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
@@ -67,13 +85,16 @@ function getChatHistoryContext(maxMessages = 50) {
     }));
 }
 
-// NOTE: Activated lorebook entries are NOT gathered yet.
-// SillyTavern tracks world-info activation internally, and the exact hook to read
-// "which entries fired during this chat" needs to be confirmed against your
-// installed version before we rely on it. Placeholder for now:
+// Uses whatever the WORLD_INFO_ACTIVATED listener (above) most recently captured.
+// If lastActivatedWorldInfo is empty, either nothing has activated yet this session,
+// or the event hypothesis above didn't pan out - check the console warning at load time.
 function getActivatedLorebookContext() {
-    console.warn(`[${extensionName}] TODO: activated lorebook context gathering not implemented yet.`);
-    return [];
+    return lastActivatedWorldInfo.map(entry => ({
+        world: entry.world,
+        comment: entry.comment,
+        content: entry.content,
+        key: entry.key,
+    }));
 }
 
 function gatherGenerationContext(count, instructions) {
@@ -96,6 +117,8 @@ function onGenerateConfirm() {
 
     const generationContext = gatherGenerationContext(count, instructions);
 
+    // For now, just log the full gathered context so we can verify it's correct
+    // before wiring up the actual AI call in the next stage.
     console.log(`[${extensionName}] Gathered generation context:`, generationContext);
 
     toastr.info(
