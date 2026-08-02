@@ -55,3 +55,52 @@
     display: flex;
     gap: 10px;
 }
+
+.wpm-fields-section {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--SmartThemeBorderColor, #555);
+}
+
+.wpm-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.wpm-field-name-input {
+    flex: 1;
+    background: var(--SmartThemeBotMesBlurTintColor, #2b2b2b);
+    color: var(--SmartThemeBodyColor, #fff);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.wpm-remove-field-btn {
+    flex-shrink: 0;
+}
+
+.wpm-add-field-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.wpm-add-field-row input[type="text"] {
+    flex: 1;
+    background: var(--SmartThemeBotMesBlurTintColor, #2b2b2b);
+    color: var(--SmartThemeBodyColor, #fff);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.wpm-fields-buttons-row {
+    margin-top: 8px;
+}
