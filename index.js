@@ -123,11 +123,15 @@ async function onTestAiClick() {
         return;
     }
 
-    console.log(`[${extensionName}] Sending test prompt to AI via generateQuietPrompt...`);
+    console.log(`[${extensionName}] Sending test prompt to AI via generateQuietPrompt (object form)...`);
     toastr.info("Sending test prompt to the AI, check console...", "World Population Manager");
 
     try {
-        const result = await context.generateQuietPrompt("Reply with exactly one word: PONG");
+        const result = await context.generateQuietPrompt({
+            quietPrompt: "Reply with exactly one word and nothing else: PONG",
+            skipWIAN: true,
+            quietToLoud: false,
+        });
         console.log(`[${extensionName}] AI test response:`, result);
         toastr.success(`AI responded: ${String(result).slice(0, 200)}`, "World Population Manager - Test OK");
     } catch (error) {
