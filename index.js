@@ -1,9 +1,8 @@
-// World Population Manager - Stage 3: Generation window UI shell (no real generation yet)
-// Import from SillyTavern core
+// World Population Manager - Stage 4: Gather real context (character card + chat history)
+// Lorebook activation tracking is deliberately NOT included yet - see note below.
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
 
-// Extension name MUST match folder name
 const extensionName = "world-population-manager";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
@@ -34,12 +33,75 @@ function closeGeneratePopup() {
     $("#wpm_generate_popup").hide();
 }
 
+// --- Context gathering ---
+
+function getCharacterCardContext() {
+    const context = getContext();
+    const character = context.characters ? context.characters[context.characterId] : null;
+
+    if (!character) {
+        console.warn(`[${extensionName}] No character card found (context.characterId / context.characters empty).`);
+        return null;
+    }
+
+    return {
+        name: character.name,
+        description: character.description,
+        personality: character.personality,
+        scenario: character.scenario,
+        first_mes: character.first_mes,
+        mes_example: character.mes_example,
+        creator_notes: character.creatorcomment || character.creator_notes || null,
+    };
+}
+
+function getChatHistoryContext(maxMessages = 50) {
+    const context = getContext();
+    const chat = context.chat || [];
+    const recent = chat.slice(-maxMessages);
+
+    return recent.map(m => ({
+        name: m.name,
+        is_user: m.is_user,
+        mes: m.mes,
+    }));
+}
+
+// NOTE: Activated lorebook entries are NOT gathered yet.
+// SillyTavern tracks world-info activation internally, and the exact hook to read
+// "which entries fired during this chat" needs to be confirmed against your
+// installed version before we rely on it. Placeholder for now:
+function getActivatedLorebookContext() {
+    console.warn(`[${extensionName}] TODO: activated lorebook context gathering not implemented yet.`);
+    return [];
+}
+
+function gatherGenerationContext(count, instructions) {
+    const characterCard = getCharacterCardContext();
+    const chatHistory = getChatHistoryContext();
+    const activatedLorebooks = getActivatedLorebookContext();
+
+    return {
+        count,
+        instructions,
+        characterCard,
+        chatHistory,
+        activatedLorebooks,
+    };
+}
+
 function onGenerateConfirm() {
     const count = Number($("#wpm_char_count").val());
     const instructions = String($("#wpm_generate_instructions").val());
 
-    console.log(`[${extensionName}] Generate requested:`, { count, instructions });
-    toastr.info(`Would generate ${count} character(s). (No AI call wired up yet.)`, "World Population Manager");
+    const generationContext = gatherGenerationContext(count, instructions);
+
+    console.log(`[${extensionName}] Gathered generation context:`, generationContext);
+
+    toastr.info(
+        `Gathered context: character card ${generationContext.characterCard ? "✅" : "❌ (none)"}, ${generationContext.chatHistory.length} chat messages. Check console for details.`,
+        "World Population Manager"
+    );
 
     closeGeneratePopup();
 }
