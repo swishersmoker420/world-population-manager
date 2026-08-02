@@ -123,12 +123,19 @@ async function onTestAiClick() {
         return;
     }
 
-    console.log(`[${extensionName}] Sending test prompt to AI via generateQuietPrompt (object form)...`);
+    const testPrompt = [
+        "[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]",
+        "You are not a character in this story right now. You are a data-generation tool.",
+        "Ignore everything happening in the current scene.",
+        "Your ONLY task: output exactly one word and nothing else, no narration, no dialogue, no formatting: PONG",
+    ].join("\n");
+
+    console.log(`[${extensionName}] Sending stronger override test prompt to AI...`);
     toastr.info("Sending test prompt to the AI, check console...", "World Population Manager");
 
     try {
         const result = await context.generateQuietPrompt({
-            quietPrompt: "Reply with exactly one word and nothing else: PONG",
+            quietPrompt: testPrompt,
             skipWIAN: true,
             quietToLoud: false,
         });
