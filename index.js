@@ -1,4 +1,4 @@
-// World Population Manager - Stage 5: Test AI connection (before real generation)
+// World Population Manager - Stage 6: Real NPC generation prompt (raw output only, no parsing/saving yet)
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
@@ -98,20 +98,99 @@ function gatherGenerationContext(count, instructions) {
     };
 }
 
-function onGenerateConfirm() {
+const NPC_TEMPLATE = [
+    "Name:",
+    "Age:",
+    "Height:",
+    "Weight:",
+    "Ethnicity:",
+    "Religion:",
+    "Hair:",
+    "Skin:",
+    "Figure:",
+    "Accessories:",
+    "Clothing style:",
+    "Notable clothing combos:",
+    "Speech:",
+    "Other mannerisms:",
+].join("\n");
+
+const NPC_DELIMITER = "===NPC===";
+
+function buildGenerationPrompt(generationContext) {
+    const { count, instructions, characterCard, chatHistory, activatedLorebooks } = generationContext;
+
+    const lines = [];
+
+    lines.push("[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]");
+    lines.push("You are not a character in this story right now. You are a data-generation tool.");
+    lines.push("Ignore the current scene's events. Do not narrate, do not roleplay, do not write dialogue as any character.");
+    lines.push("Your ONLY task is to invent background NPCs (non-player characters) who could plausibly exist in this world.");
+    lines.push("");
+
+    if (characterCard) {
+        lines.push("--- WORLD / CHARACTER CARD CONTEXT (for tone and setting only) ---");
+        if (characterCard.name) lines.push(`Main character: ${characterCard.name}`);
+        if (characterCard.description) lines.push(`Description: ${characterCard.description}`);
+        if (characterCard.scenario) lines.push(`Scenario: ${characterCard.scenario}`);
+        lines.push("");
+    }
+
+    if (chatHistory && chatHistory.length > 0) {
+        lines.push("--- RECENT CHAT (for tone, setting, and continuity only - do not continue it) ---");
+        for (const m of chatHistory) {
+            lines.push(`${m.name}: ${m.mes}`);
+        }
+        lines.push("");
+    }
+
+    if (activatedLorebooks && activatedLorebooks.length > 0) {
+        lines.push("--- EXISTING CHARACTER EXAMPLES (match this style and level of detail) ---");
+        for (const entry of activatedLorebooks) {
+            lines.push(entry.content);
+            lines.push("");
+        }
+    }
+
+    lines.push("--- YOUR TASK ---");
+    lines.push(`Generate exactly ${count} new NPC(s) who fit naturally into this world.`);
+    lines.push("Follow these user instructions as your primary guidance:");
+    lines.push(instructions && instructions.trim().length > 0 ? instructions : "(No special instructions given - use your best judgment for a believable, varied population.)");
+    lines.push("");
+    lines.push("Each NPC MUST use exactly this template, with every field filled in with a detailed, natural description:");
+    lines.push(NPC_TEMPLATE);
+    lines.push("");
+    lines.push(`Separate each NPC with a line containing exactly: ${NPC_DELIMITER}`);
+    lines.push("Output ONLY the NPCs in this format. No preamble, no summary, no narration, no commentary.");
+
+    return lines.join("\n");
+}
+
+async function onGenerateConfirm() {
     const count = Number($("#wpm_char_count").val());
     const instructions = String($("#wpm_generate_instructions").val());
 
     const generationContext = gatherGenerationContext(count, instructions);
+    const prompt = buildGenerationPrompt(generationContext);
 
-    console.log(`[${extensionName}] Gathered generation context:`, generationContext);
-
-    toastr.info(
-        `Gathered context: character card ${generationContext.characterCard ? "✅" : "❌ (none)"}, ${generationContext.chatHistory.length} chat messages. Check console for details.`,
-        "World Population Manager"
-    );
-
+    console.log(`[${extensionName}] Full generation prompt being sent:`, prompt);
     closeGeneratePopup();
+    toastr.info(`Generating ${count} NPC(s), this may take a moment. Check console for raw output.`, "World Population Manager");
+
+    const context = getContext();
+
+    try {
+        const result = await context.generateQuietPrompt({
+            quietPrompt: prompt,
+            skipWIAN: true,
+            quietToLoud: false,
+        });
+        console.log(`[${extensionName}] RAW generation output:`, result);
+        toastr.success("Generation finished - check console for raw output (not parsed/saved yet).", "World Population Manager");
+    } catch (error) {
+        console.error(`[${extensionName}] Generation failed:`, error);
+        toastr.error("Generation failed - check console.", "World Population Manager");
+    }
 }
 
 async function onTestAiClick() {
