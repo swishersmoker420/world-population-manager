@@ -1,12 +1,30 @@
-// World Population Manager - Stage 7: Parse raw AI output into structured NPCs (not saved as lorebooks yet)
+// World Population Manager - Stage 8: Configurable character template fields
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const extensionName = "world-population-manager";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
+const DEFAULT_FIELDS = [
+    "Name",
+    "Age",
+    "Height",
+    "Weight",
+    "Ethnicity",
+    "Religion",
+    "Hair",
+    "Skin",
+    "Figure",
+    "Accessories",
+    "Clothing style",
+    "Notable clothing combos",
+    "Speech",
+    "Other mannerisms",
+];
+
 const defaultSettings = {
     enabled: false,
+    fields: DEFAULT_FIELDS.slice(),
 };
 
 let lastActivatedWorldInfo = [];
@@ -20,12 +38,29 @@ if (event_types && event_types.WORLD_INFO_ACTIVATED) {
     console.warn(`[${extensionName}] event_types.WORLD_INFO_ACTIVATED not found - this SillyTavern version may name it differently. Lorebook context will be empty until this is fixed.`);
 }
 
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 async function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
     if (Object.keys(extension_settings[extensionName]).length === 0) {
-        Object.assign(extension_settings[extensionName], defaultSettings);
+        Object.assign(extension_settings[extensionName], {
+            enabled: defaultSettings.enabled,
+            fields: DEFAULT_FIELDS.slice(),
+        });
     }
+    if (!Array.isArray(extension_settings[extensionName].fields) || extension_settings[extensionName].fields.length === 0) {
+        extension_settings[extensionName].fields = DEFAULT_FIELDS.slice();
+    }
+
     $("#wpm_enabled").prop("checked", extension_settings[extensionName].enabled);
+    renderFieldsList();
 }
 
 function onEnabledChange(event) {
@@ -33,6 +68,89 @@ function onEnabledChange(event) {
     extension_settings[extensionName].enabled = value;
     saveSettingsDebounced();
     console.log(`[${extensionName}] Setting saved: enabled =`, value);
+}
+
+// --- Field management ---
+
+function getCurrentFields() {
+    return extension_settings[extensionName].fields || DEFAULT_FIELDS.slice();
+}
+
+function renderFieldsList() {
+    const fields = getCurrentFields();
+    const $list = $("#wpm_fields_list");
+    $list.empty();
+
+    fields.forEach((field, index) => {
+        const $row = $(
+            `<div class="wpm-field-row" data-index="${index}">
+                <input type="text" class="wpm-field-name-input" value="${escapeHtml(field)}" />
+                <input type="button" class="menu_button wpm-remove-field-btn" value="Remove" />
+            </div>`
+        );
+        $list.append($row);
+    });
+}
+
+function onFieldNameChange(event) {
+    const index = Number($(event.target).closest(".wpm-field-row").data("index"));
+    const newValue = String($(event.target).val()).trim();
+
+    if (!newValue) {
+        toastr.warning("Field name can't be empty.", "World Population Manager");
+        renderFieldsList();
+        return;
+    }
+
+    extension_settings[extensionName].fields[index] = newValue;
+    saveSettingsDebounced();
+    console.log(`[${extensionName}] Field ${index} renamed to:`, newValue);
+}
+
+function onRemoveFieldClick(event) {
+    const index = Number($(event.target).closest(".wpm-field-row").data("index"));
+    const fields = extension_settings[extensionName].fields;
+
+    if (fields.length <= 1) {
+        toastr.warning("You need at least one field.", "World Population Manager");
+        return;
+    }
+
+    const removed = fields.splice(index, 1);
+    saveSettingsDebounced();
+    renderFieldsList();
+    console.log(`[${extensionName}] Field removed:`, removed[0]);
+}
+
+function onAddFieldClick() {
+    const newFieldName = String($("#wpm_new_field_name").val()).trim();
+
+    if (!newFieldName) {
+        toastr.warning("Enter a field name first.", "World Population Manager");
+        return;
+    }
+
+    const fields = extension_settings[extensionName].fields;
+    const alreadyExists = fields.some(f => f.toLowerCase() === newFieldName.toLowerCase());
+
+    if (alreadyExists) {
+        toastr.warning(`Field "${newFieldName}" already exists.`, "World Population Manager");
+        return;
+    }
+
+    fields.push(newFieldName);
+    saveSettingsDebounced();
+    $("#wpm_new_field_name").val("");
+    renderFieldsList();
+    console.log(`[${extensionName}] Field added:`, newFieldName);
+}
+
+function onResetFieldsClick() {
+    extension_settings[extensionName].fields = DEFAULT_FIELDS.slice();
+    saveSettingsDebounced();
+    renderFieldsList();
+    toastr.info("Fields reset to defaults.", "World Population Manager");
+    console.log(`[${extensionName}] Fields reset to defaults.`);
 }
 
 function openGeneratePopup() {
@@ -98,24 +216,11 @@ function gatherGenerationContext(count, instructions) {
     };
 }
 
-const NPC_TEMPLATE = [
-    "Name:",
-    "Age:",
-    "Height:",
-    "Weight:",
-    "Ethnicity:",
-    "Religion:",
-    "Hair:",
-    "Skin:",
-    "Figure:",
-    "Accessories:",
-    "Clothing style:",
-    "Notable clothing combos:",
-    "Speech:",
-    "Other mannerisms:",
-].join("\n");
-
 const NPC_DELIMITER = "===NPC===";
+
+function buildNpcTemplateText() {
+    return getCurrentFields().map(f => `${f}:`).join("\n");
+}
 
 function buildGenerationPrompt(generationContext) {
     const { count, instructions, characterCard, chatHistory, activatedLorebooks } = generationContext;
@@ -158,7 +263,7 @@ function buildGenerationPrompt(generationContext) {
     lines.push(instructions && instructions.trim().length > 0 ? instructions : "(No special instructions given - use your best judgment for a believable, varied population.)");
     lines.push("");
     lines.push("Each NPC MUST use exactly this template, with every field filled in with a detailed, natural description:");
-    lines.push(NPC_TEMPLATE);
+    lines.push(buildNpcTemplateText());
     lines.push("");
     lines.push(`Separate each NPC with a line containing exactly: ${NPC_DELIMITER}`);
     lines.push("Output ONLY the NPCs in this format. No preamble, no summary, no narration, no commentary.");
@@ -166,27 +271,12 @@ function buildGenerationPrompt(generationContext) {
     return lines.join("\n");
 }
 
-const NPC_TEMPLATE_FIELDS = [
-    "Name",
-    "Age",
-    "Height",
-    "Weight",
-    "Ethnicity",
-    "Religion",
-    "Hair",
-    "Skin",
-    "Figure",
-    "Accessories",
-    "Clothing style",
-    "Notable clothing combos",
-    "Speech",
-    "Other mannerisms",
-];
-
 function parseNpcBlocks(rawText) {
     if (!rawText || typeof rawText !== "string") {
         return [];
     }
+
+    const currentFields = getCurrentFields();
 
     const blocks = rawText
         .split(NPC_DELIMITER)
@@ -201,7 +291,7 @@ function parseNpcBlocks(rawText) {
         for (const line of lines) {
             const match = line.match(/^([A-Za-z /]+):\s*(.*)$/);
             const matchedFieldName = match
-                ? NPC_TEMPLATE_FIELDS.find(f => f.toLowerCase() === match[1].trim().toLowerCase())
+                ? currentFields.find(f => f.toLowerCase() === match[1].trim().toLowerCase())
                 : null;
 
             if (matchedFieldName) {
@@ -212,8 +302,11 @@ function parseNpcBlocks(rawText) {
             }
         }
 
+        const nameField = currentFields.find(f => f.toLowerCase() === "name");
+        const name = (nameField && fields[nameField]) || "Unnamed NPC";
+
         return {
-            name: fields["Name"] || "Unnamed NPC",
+            name,
             fields,
             rawContent: block,
         };
@@ -296,6 +389,11 @@ jQuery(async () => {
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_test_ai").on("click", onTestAiClick);
+
+        $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
+        $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
+        $("#wpm_add_field_btn").on("click", onAddFieldClick);
+        $("#wpm_reset_fields_btn").on("click", onResetFieldsClick);
 
         loadSettings();
 
