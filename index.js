@@ -427,11 +427,6 @@ async function onGenerateConfirm() {
 }
 
 // --- Scene Pipeline: Stage 1 - Scene Analysis ---
-// Looks at the current conversation and decides whether new NPCs would
-// naturally appear right now. Outputs either the literal string "NONE" or a
-// short recommendation. This stage does NOT pick specific NPCs yet - that's
-// Stage 2 (NPC Director), which we'll build once this stage is confirmed
-// working reliably.
 function buildSceneAnalysisPrompt(generationContext) {
     const { characterCard, chatHistory } = generationContext;
     const lines = [];
@@ -478,23 +473,119 @@ async function onAnalyzeSceneClick() {
     const context = getContext();
 
     try {
-        const result = await context.generateQuietPrompt({
+        const analysisResult = await context.generateQuietPrompt({
             quietPrompt: prompt,
             skipWIAN: true,
             quietToLoud: false,
         });
-        console.log(`[${extensionName}] Scene analysis result:`, result);
+        console.log(`[${extensionName}] Scene analysis result:`, analysisResult);
 
-        const trimmed = String(result).trim();
-        if (trimmed.toUpperCase().startsWith("NONE")) {
+        const trimmedAnalysis = String(analysisResult).trim();
+
+        if (trimmedAnalysis.toUpperCase().startsWith("NONE")) {
             toastr.info("Scene analysis: no new NPCs recommended.", "World Population Manager");
+            return;
+        }
+
+        toastr.info(`Scene analysis recommends: ${trimmedAnalysis}. Checking existing NPCs...`, "World Population Manager");
+
+        // --- Stage 2: NPC Director ---
+        const { worldName, npcs } = await getAllNpcsFromBoundLorebook();
+
+        if (!worldName) {
+            toastr.warning("No lorebook is bound to this chat, so there's no NPC list to pick from.", "World Population Manager");
+            console.warn(`[${extensionName}] No bound lorebook found (chat_metadata[METADATA_KEY] is empty).`);
+            return;
+        }
+
+        if (npcs.length === 0) {
+            toastr.warning(`Bound lorebook "${worldName}" has no NPC entries yet.`, "World Population Manager");
+            return;
+        }
+
+        const directorPrompt = buildNpcDirectorPrompt(trimmedAnalysis, npcs);
+        console.log(`[${extensionName}] NPC Director prompt:`, directorPrompt);
+
+        const directorResult = await context.generateQuietPrompt({
+            quietPrompt: directorPrompt,
+            skipWIAN: true,
+            quietToLoud: false,
+        });
+        console.log(`[${extensionName}] NPC Director result:`, directorResult);
+
+        const trimmedDirector = String(directorResult).trim();
+
+        if (trimmedDirector.toUpperCase().startsWith("NONE")) {
+            toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Would need Generate Characters instead.`, "World Population Manager");
         } else {
-            toastr.success(`Scene analysis recommends: ${trimmed}`, "World Population Manager");
+            toastr.success(`NPC Director selected: ${trimmedDirector}`, "World Population Manager");
         }
     } catch (error) {
-        console.error(`[${extensionName}] Scene analysis failed:`, error);
-        toastr.error("Scene analysis failed - check console.", "World Population Manager");
+        console.error(`[${extensionName}] Scene pipeline failed:`, error);
+        toastr.error("Scene pipeline failed - check console.", "World Population Manager");
     }
+}
+
+// Reads which lorebook is bound to the current chat, the same way SillyTavern's
+// own "chat lorebook" feature does (chat_metadata[METADATA_KEY]).
+async function getBoundLorebookName() {
+    const worldInfoModule = await import("../../../world-info.js");
+    const { METADATA_KEY } = worldInfoModule;
+    const context = getContext();
+    return context.chatMetadata ? context.chatMetadata[METADATA_KEY] : null;
+}
+
+// Loads every entry from the chat's bound lorebook, treating entry.comment as
+// the NPC's name and entry.content as their sheet. This IS effectively the
+// NPC index for now - a dedicated shorter summary index is a future upgrade.
+async function getAllNpcsFromBoundLorebook() {
+    const worldName = await getBoundLorebookName();
+    if (!worldName) {
+        return { worldName: null, npcs: [] };
+    }
+
+    const worldInfoModule = await import("../../../world-info.js");
+    const { loadWorldInfo } = worldInfoModule;
+    const data = await loadWorldInfo(worldName);
+
+    if (!data || !data.entries) {
+        return { worldName, npcs: [] };
+    }
+
+    const npcs = Object.values(data.entries)
+        .filter(entry => entry.comment)
+        .map(entry => ({
+            name: entry.comment,
+            content: entry.content || "",
+        }));
+
+    return { worldName, npcs };
+}
+
+function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
+    const lines = [];
+
+    lines.push("[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]");
+    lines.push("You are not a character in this story right now. You are a casting director tool.");
+    lines.push("Do not narrate, do not roleplay, do not invent new characters.");
+    lines.push("");
+    lines.push("--- SCENE RECOMMENDATION ---");
+    lines.push(sceneRecommendation);
+    lines.push("");
+    lines.push("--- EXISTING NPCs AVAILABLE (you may ONLY choose from this list) ---");
+    npcs.forEach((npc, i) => {
+        const excerpt = npc.content.slice(0, 300).replace(/\n/g, " ");
+        lines.push(`${i + 1}. ${npc.name}: ${excerpt}${npc.content.length > 300 ? "..." : ""}`);
+    });
+    lines.push("");
+    lines.push("--- YOUR TASK ---");
+    lines.push("Decide whether any of the EXISTING NPCs listed above naturally fit the scene recommendation.");
+    lines.push("Do NOT invent a new character, even if none of the existing ones fit perfectly.");
+    lines.push("If one or more existing NPCs fit, output their exact name(s) from the list above, one per line, and nothing else.");
+    lines.push("If none of them genuinely fit, output EXACTLY: NONE");
+    lines.push("Output ONLY names or NONE - no explanation, no formatting.");
+
+    return lines.join("\n");
 }
 
 jQuery(async () => {
