@@ -34,6 +34,7 @@
 }
 
 .wpm-popup-inner input[type="number"],
+.wpm-popup-inner input[type="text"],
 .wpm-popup-inner textarea {
     width: 100%;
     box-sizing: border-box;
