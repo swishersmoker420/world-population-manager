@@ -383,6 +383,41 @@ async function saveNpcsToLorebook(worldName, parsedNpcs) {
     return savedCount;
 }
 
+// Binds a lorebook to the current chat (chat_metadata[METADATA_KEY] = worldName),
+// the same mechanism SillyTavern's own "chat lorebook" feature uses. Called
+// automatically on every generation, unconditionally - the extension always
+// keeps the chat pointed at whichever lorebook it most recently saved NPCs
+// into, overwriting any previous binding (including stale ones from before
+// this behavior existed).
+async function bindLorebookToChat(worldName) {
+    const worldInfoModule = await import("../../../world-info.js");
+    const { METADATA_KEY } = worldInfoModule;
+
+    const context = getContext();
+    if (!context.chatMetadata) {
+        console.warn(`[${extensionName}] context.chatMetadata not available - can't bind lorebook to chat.`);
+        return false;
+    }
+
+    const previousBinding = context.chatMetadata[METADATA_KEY];
+    if (previousBinding && previousBinding !== worldName) {
+        console.log(`[${extensionName}] Replacing previously bound lorebook "${previousBinding}" with "${worldName}" for this chat.`);
+    }
+
+    context.chatMetadata[METADATA_KEY] = worldName;
+
+    if (typeof context.saveMetadataDebounced === "function") {
+        context.saveMetadataDebounced();
+    } else if (typeof context.saveMetadata === "function") {
+        await context.saveMetadata();
+    } else {
+        console.warn(`[${extensionName}] No saveMetadata function found on context - binding may not persist.`);
+    }
+
+    console.log(`[${extensionName}] Bound lorebook "${worldName}" to current chat (METADATA_KEY: ${METADATA_KEY}).`);
+    return true;
+}
+
 async function onGenerateConfirm() {
     const count = Number($("#wpm_char_count").val());
     const instructions = String($("#wpm_generate_instructions").val());
@@ -419,7 +454,9 @@ async function onGenerateConfirm() {
         }
 
         const savedCount = await saveNpcsToLorebook(lorebookName, parsedNpcs);
-        toastr.success(`Saved ${savedCount}/${count} NPC(s) to lorebook "${lorebookName}".`, "World Population Manager");
+        await bindLorebookToChat(lorebookName);
+
+        toastr.success(`Saved ${savedCount}/${count} NPC(s) to lorebook "${lorebookName}" and bound it to this chat.`, "World Population Manager");
     } catch (error) {
         console.error(`[${extensionName}] Generation/save failed:`, error);
         toastr.error("Generation or save failed - check console.", "World Population Manager");
