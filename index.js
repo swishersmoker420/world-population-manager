@@ -1,6 +1,6 @@
 // World Population Manager - Stage 8: Configurable character template fields
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, extension_prompt_types, extension_prompt_roles } from "../../../../script.js";
 
 const extensionName = "world-population-manager";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
@@ -500,6 +500,53 @@ function buildSceneAnalysisPrompt(generationContext) {
     return lines.join("\n");
 }
 
+const ACTIVE_NPC_PROMPT_KEY = "wpm_active_npcs";
+
+// --- Scene Pipeline: Stage 3 - Lorebook Injection ---
+// Pushes the picked NPC(s) full sheet(s) into the REAL generation context
+// (not a quiet/background call) using setExtensionPrompt, so the next actual
+// in-character response the user gets includes them. Clears the injection
+// when nobody fits, so a stale NPC doesn't linger into later scenes.
+function updateActiveNpcInjection(namesText, npcs) {
+    const context = getContext();
+
+    if (typeof context.setExtensionPrompt !== "function") {
+        console.warn(`[${extensionName}] setExtensionPrompt not available - cannot inject NPC into scene.`);
+        return [];
+    }
+
+    const requestedNames = String(namesText)
+        .split("\n")
+        .map(n => n.trim())
+        .filter(n => n.length > 0);
+
+    const matchedNpcs = npcs.filter(npc =>
+        requestedNames.some(reqName => reqName.toLowerCase() === npc.name.toLowerCase())
+    );
+
+    if (matchedNpcs.length === 0) {
+        context.setExtensionPrompt(ACTIVE_NPC_PROMPT_KEY, "", extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        console.log(`[${extensionName}] Cleared active NPC injection (nobody matched).`);
+        return [];
+    }
+
+    const injectedText = matchedNpcs
+        .map(npc => `[${npc.name} is present in the scene]\n${npc.content}`)
+        .join("\n\n");
+
+    context.setExtensionPrompt(
+        ACTIVE_NPC_PROMPT_KEY,
+        injectedText,
+        extension_prompt_types.IN_CHAT,
+        0,
+        false,
+        extension_prompt_roles.SYSTEM
+    );
+
+    console.log(`[${extensionName}] Injected NPC(s) into scene:`, matchedNpcs.map(n => n.name));
+    return matchedNpcs;
+}
+
 async function onAnalyzeSceneClick() {
     const generationContext = gatherGenerationContext(0, "");
     const prompt = buildSceneAnalysisPrompt(generationContext);
@@ -553,9 +600,15 @@ async function onAnalyzeSceneClick() {
         const trimmedDirector = String(directorResult).trim();
 
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
+            updateActiveNpcInjection("", npcs);
             toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Would need Generate Characters instead.`, "World Population Manager");
         } else {
-            toastr.success(`NPC Director selected: ${trimmedDirector}`, "World Population Manager");
+            const matchedNpcs = updateActiveNpcInjection(trimmedDirector, npcs);
+            if (matchedNpcs.length === 0) {
+                toastr.warning(`Director said "${trimmedDirector}" but that didn't match any real NPC name - nothing injected.`, "World Population Manager");
+            } else {
+                toastr.success(`Injected into scene: ${matchedNpcs.map(n => n.name).join(", ")}. They'll be present in your next message.`, "World Population Manager");
+            }
         }
     } catch (error) {
         console.error(`[${extensionName}] Scene pipeline failed:`, error);
@@ -625,34 +678,6 @@ function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
     return lines.join("\n");
 }
 
-async function onInspectSetExtensionPromptClick() {
-    const context = getContext();
-
-    if (typeof context.setExtensionPrompt !== "function") {
-        console.warn(`[${extensionName}] context.setExtensionPrompt is not a function.`);
-        toastr.warning("setExtensionPrompt not found on context - check console.", "World Population Manager");
-        return;
-    }
-
-    console.log(`[${extensionName}] --- setExtensionPrompt (function source) ---\n` + context.setExtensionPrompt.toString());
-
-    // extension_prompt_types/roles aren't on context - check if script.js exports them directly
-    try {
-        const scriptModule = await import("../../../../script.js");
-        const promptRelatedKeys = Object.keys(scriptModule).filter(k => /extension_prompt/i.test(k));
-        console.log(`[${extensionName}] script.js keys matching "extension_prompt":`, promptRelatedKeys);
-        for (const key of promptRelatedKeys) {
-            console.log(`[${extensionName}] script.js export "${key}":`, scriptModule[key]);
-        }
-        if (promptRelatedKeys.length === 0) {
-            console.log(`[${extensionName}] No matches in script.js. Full export list:`, Object.keys(scriptModule));
-        }
-    } catch (error) {
-        console.error(`[${extensionName}] Failed to inspect script.js exports:`, error);
-    }
-
-    toastr.info("Printed setExtensionPrompt source + related constants to console.", "World Population Manager");
-}
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -665,7 +690,6 @@ jQuery(async () => {
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
-        $("#wpm_inspect_setext").on("click", onInspectSetExtensionPromptClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
