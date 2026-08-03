@@ -277,6 +277,7 @@ function buildGenerationPrompt(generationContext) {
 
     return lines.join("\n");
 }
+
 function parseNpcBlocks(rawText) {
     if (!rawText || typeof rawText !== "string") {
         return [];
@@ -350,6 +351,18 @@ async function onGenerateConfirm() {
     }
 }
 
+async function onInspectContextClick() {
+    const context = getContext();
+    const allKeys = Object.keys(context);
+    const worldRelatedKeys = allKeys.filter(k => /world|lore|book/i.test(k));
+
+    console.log(`[${extensionName}] Full context object:`, context);
+    console.log(`[${extensionName}] All context keys:`, allKeys);
+    console.log(`[${extensionName}] World/lorebook-related keys found:`, worldRelatedKeys);
+
+    toastr.info(`Found ${worldRelatedKeys.length} world/lorebook-related keys. Check console.`, "World Population Manager");
+}
+
 async function onTestAiClick() {
     const context = getContext();
 
@@ -395,6 +408,7 @@ jQuery(async () => {
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_test_ai").on("click", onTestAiClick);
+        $("#wpm_inspect_context").on("click", onInspectContextClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
