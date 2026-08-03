@@ -503,10 +503,6 @@ function buildSceneAnalysisPrompt(generationContext) {
 const ACTIVE_NPC_PROMPT_KEY = "wpm_active_npcs";
 
 // --- Scene Pipeline: Stage 3 - Lorebook Injection ---
-// Pushes the picked NPC(s) full sheet(s) into the REAL generation context
-// (not a quiet/background call) using setExtensionPrompt, so the next actual
-// in-character response the user gets includes them. Clears the injection
-// when nobody fits, so a stale NPC doesn't linger into later scenes.
 function updateActiveNpcInjection(namesText, npcs) {
     const context = getContext();
 
@@ -549,9 +545,6 @@ function updateActiveNpcInjection(namesText, npcs) {
 
 let isScenePipelineRunning = false;
 
-// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
-// automatic trigger. showToasts=false is used for the automatic path so it
-// doesn't spam notifications on every message; it still logs everything.
 async function runScenePipeline(showToasts) {
     if (isScenePipelineRunning) {
         console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
@@ -633,8 +626,6 @@ async function onAnalyzeSceneClick() {
     await runScenePipeline(true);
 }
 
-// Reads which lorebook is bound to the current chat, the same way SillyTavern's
-// own "chat lorebook" feature does (chat_metadata[METADATA_KEY]).
 async function getBoundLorebookName() {
     const worldInfoModule = await import("../../../world-info.js");
     const { METADATA_KEY } = worldInfoModule;
@@ -642,9 +633,6 @@ async function getBoundLorebookName() {
     return context.chatMetadata ? context.chatMetadata[METADATA_KEY] : null;
 }
 
-// Loads every entry from the chat's bound lorebook, treating entry.comment as
-// the NPC's name and entry.content as their sheet. This IS effectively the
-// NPC index for now - a dedicated shorter summary index is a future upgrade.
 async function getAllNpcsFromBoundLorebook() {
     const worldName = await getBoundLorebookName();
     if (!worldName) {
@@ -706,6 +694,12 @@ async function onInspectReloadEditorClick() {
     }
 }
 
+function onInspectEventTypesClick() {
+    console.log(`[${extensionName}] Full event_types object:`, event_types);
+    console.log(`[${extensionName}] event_types keys:`, Object.keys(event_types || {}));
+    toastr.info("Printed event_types to console.", "World Population Manager");
+}
+
 // Automatically run the scene pipeline whenever the user sends a message,
 // so it's already injected before the AI's response generates - same
 // end result as manually clicking "Analyze Scene" beforehand.
@@ -730,6 +724,7 @@ jQuery(async () => {
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
         $("#wpm_inspect_reload").on("click", onInspectReloadEditorClick);
+        $("#wpm_inspect_events").on("click", onInspectEventTypesClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
