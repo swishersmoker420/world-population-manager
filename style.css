@@ -105,3 +105,9 @@
 .wpm-fields-buttons-row {
     margin-top: 8px;
 }
+
+.wpm-scene-section {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--SmartThemeBorderColor, #555);
+}
