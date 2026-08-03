@@ -636,19 +636,23 @@ async function onInspectSetExtensionPromptClick() {
 
     console.log(`[${extensionName}] --- setExtensionPrompt (function source) ---\n` + context.setExtensionPrompt.toString());
 
-    // Also check for related exports that usually travel with it
-    const relatedKeys = ["extension_prompt_types", "extensionPrompts", "extension_prompt_roles"];
-    for (const key of relatedKeys) {
-        if (context[key] !== undefined) {
-            console.log(`[${extensionName}] context.${key}:`, context[key]);
-        } else {
-            console.log(`[${extensionName}] context.${key} is undefined`);
+    // extension_prompt_types/roles aren't on context - check if script.js exports them directly
+    try {
+        const scriptModule = await import("../../../../script.js");
+        const promptRelatedKeys = Object.keys(scriptModule).filter(k => /extension_prompt/i.test(k));
+        console.log(`[${extensionName}] script.js keys matching "extension_prompt":`, promptRelatedKeys);
+        for (const key of promptRelatedKeys) {
+            console.log(`[${extensionName}] script.js export "${key}":`, scriptModule[key]);
         }
+        if (promptRelatedKeys.length === 0) {
+            console.log(`[${extensionName}] No matches in script.js. Full export list:`, Object.keys(scriptModule));
+        }
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to inspect script.js exports:`, error);
     }
 
-    toastr.info("Printed setExtensionPrompt source to console.", "World Population Manager");
+    toastr.info("Printed setExtensionPrompt source + related constants to console.", "World Population Manager");
 }
-
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
