@@ -250,7 +250,9 @@ function buildGenerationPrompt(generationContext) {
     }
 
     if (activatedLorebooks && activatedLorebooks.length > 0) {
-        lines.push("--- EXISTING CHARACTER EXAMPLES (match this style and level of detail) ---");
+        lines.push("--- EXISTING CHARACTER EXAMPLES ---");
+        lines.push("IMPORTANT: These examples may use a DIFFERENT field structure than your task below.");
+        lines.push("Only copy their writing tone, level of detail, and vocabulary. Do NOT copy their field names or field structure.");
         for (const entry of activatedLorebooks) {
             lines.push(entry.content);
             lines.push("");
@@ -262,15 +264,19 @@ function buildGenerationPrompt(generationContext) {
     lines.push("Follow these user instructions as your primary guidance:");
     lines.push(instructions && instructions.trim().length > 0 ? instructions : "(No special instructions given - use your best judgment for a believable, varied population.)");
     lines.push("");
-    lines.push("Each NPC MUST use exactly this template, with every field filled in with a detailed, natural description:");
+    lines.push("Each NPC MUST use EXACTLY this field structure and ONLY these fields, in this exact order, with every field filled in with a detailed, natural description:");
     lines.push(buildNpcTemplateText());
+    lines.push("");
+    lines.push("Do not add fields that aren't listed above. Do not omit any field listed above. Do not use any other template you may have seen in the examples above.");
     lines.push("");
     lines.push(`Separate each NPC with a line containing exactly: ${NPC_DELIMITER}`);
     lines.push("Output ONLY the NPCs in this format. No preamble, no summary, no narration, no commentary.");
+    lines.push("");
+    lines.push("REMINDER - the exact fields to use, in order, one per line, nothing else:");
+    lines.push(buildNpcTemplateText());
 
     return lines.join("\n");
 }
-
 function parseNpcBlocks(rawText) {
     if (!rawText || typeof rawText !== "string") {
         return [];
