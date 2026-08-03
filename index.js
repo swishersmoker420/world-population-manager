@@ -738,19 +738,21 @@ async function onInspectCharWorldFunctionsClick() {
     }
 }
 
-// Automatically run the scene pipeline right before SillyTavern combines the
-// final prompt for the real generation - MESSAGE_SENT fired too early (the
-// main generation didn't wait for our background analysis to finish, so the
-// injection landed after the response already started). This hook should be
-// the last safe point to set extension prompts before they're read.
-if (event_types && event_types.GENERATE_BEFORE_COMBINE_PROMPTS) {
-    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, async () => {
-        console.log(`[${extensionName}] GENERATE_BEFORE_COMBINE_PROMPTS fired - running scene pipeline...`);
-        await runScenePipeline(false);
+// Automatically run the scene pipeline whenever the user sends a message,
+// so it's already injected before the AI's response generates - same
+// end result as manually clicking "Analyze Scene" beforehand.
+// NOTE: GENERATE_BEFORE_COMBINE_PROMPTS was tried instead and never fired in
+// testing, so reverted back to MESSAGE_SENT. This has a known timing risk
+// (the main generation may not wait for our background analysis to finish
+// before compiling its prompt) which still needs troubleshooting.
+if (event_types && event_types.MESSAGE_SENT) {
+    eventSource.on(event_types.MESSAGE_SENT, () => {
+        console.log(`[${extensionName}] MESSAGE_SENT event fired - starting automatic scene pipeline...`);
+        runScenePipeline(false);
     });
-    console.log(`[${extensionName}] Registered GENERATE_BEFORE_COMBINE_PROMPTS listener for automatic scene analysis.`);
+    console.log(`[${extensionName}] Registered MESSAGE_SENT listener for automatic scene analysis.`);
 } else {
-    console.warn(`[${extensionName}] event_types.GENERATE_BEFORE_COMBINE_PROMPTS not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
+    console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
 }
 
 jQuery(async () => {
