@@ -486,4 +486,63 @@ async function onInspectWorldInfoSignaturesClick() {
 }
 
 async function onTestAiClick() {
-    const
+    const context = getContext();
+
+    if (typeof context.generateQuietPrompt !== "function") {
+        console.warn(`[${extensionName}] context.generateQuietPrompt is not a function - hypothesis failed, need another approach.`);
+        toastr.warning("generateQuietPrompt not found on context - check console for details.", "World Population Manager");
+        return;
+    }
+
+    const testPrompt = [
+        "[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]",
+        "You are not a character in this story right now. You are a data-generation tool.",
+        "Ignore everything happening in the current scene.",
+        "Your ONLY task: output exactly one word and nothing else, no narration, no dialogue, no formatting: PONG",
+    ].join("\n");
+
+    console.log(`[${extensionName}] Sending stronger override test prompt to AI...`);
+    toastr.info("Sending test prompt to the AI, check console...", "World Population Manager");
+
+    try {
+        const result = await context.generateQuietPrompt({
+            quietPrompt: testPrompt,
+            skipWIAN: true,
+            quietToLoud: false,
+        });
+        console.log(`[${extensionName}] AI test response:`, result);
+        toastr.success(`AI responded: ${String(result).slice(0, 200)}`, "World Population Manager - Test OK");
+    } catch (error) {
+        console.error(`[${extensionName}] generateQuietPrompt threw an error:`, error);
+        toastr.error("generateQuietPrompt threw an error - check console.", "World Population Manager");
+    }
+}
+
+jQuery(async () => {
+    console.log(`[${extensionName}] Loading...`);
+
+    try {
+        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
+        $("#extensions_settings2").append(settingsHtml);
+
+        $("#wpm_enabled").on("input", onEnabledChange);
+        $("#wpm_generate_characters").on("click", openGeneratePopup);
+        $("#wpm_generate_confirm").on("click", onGenerateConfirm);
+        $("#wpm_generate_cancel").on("click", closeGeneratePopup);
+        $("#wpm_test_ai").on("click", onTestAiClick);
+        $("#wpm_inspect_context").on("click", onInspectContextClick);
+        $("#wpm_inspect_worldinfo").on("click", onInspectWorldInfoModuleClick);
+        $("#wpm_inspect_wi_signatures").on("click", onInspectWorldInfoSignaturesClick);
+
+        $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
+        $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
+        $("#wpm_add_field_btn").on("click", onAddFieldClick);
+        $("#wpm_reset_fields_btn").on("click", onResetFieldsClick);
+
+        loadSettings();
+
+        console.log(`[${extensionName}] ✅ Loaded successfully`);
+    } catch (error) {
+        console.error(`[${extensionName}] ❌ Failed to load:`, error);
+    }
+});
