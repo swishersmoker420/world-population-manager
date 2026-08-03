@@ -426,95 +426,74 @@ async function onGenerateConfirm() {
     }
 }
 
-async function onInspectContextClick() {
-    const context = getContext();
-    const allKeys = Object.keys(context);
-    const worldRelatedKeys = allKeys.filter(k => /world|lore|book/i.test(k));
+// --- Scene Pipeline: Stage 1 - Scene Analysis ---
+// Looks at the current conversation and decides whether new NPCs would
+// naturally appear right now. Outputs either the literal string "NONE" or a
+// short recommendation. This stage does NOT pick specific NPCs yet - that's
+// Stage 2 (NPC Director), which we'll build once this stage is confirmed
+// working reliably.
+function buildSceneAnalysisPrompt(generationContext) {
+    const { characterCard, chatHistory } = generationContext;
+    const lines = [];
 
-    console.log(`[${extensionName}] Full context object:`, context);
-    console.log(`[${extensionName}] All context keys:`, allKeys);
-    console.log(`[${extensionName}] World/lorebook-related keys found:`, worldRelatedKeys);
+    lines.push("[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]");
+    lines.push("You are not a character in this story right now. You are a scene-analysis tool.");
+    lines.push("Do not narrate, do not roleplay, do not write dialogue as any character.");
+    lines.push("");
 
-    toastr.info(`Found ${worldRelatedKeys.length} world/lorebook-related keys. Check console.`, "World Population Manager");
-}
-
-async function onInspectWorldInfoModuleClick() {
-    try {
-        const worldInfoModule = await import("../../../world-info.js");
-        const exportNames = Object.keys(worldInfoModule);
-
-        console.log(`[${extensionName}] world-info.js module:`, worldInfoModule);
-        console.log(`[${extensionName}] world-info.js export names:`, exportNames);
-
-        toastr.info(`world-info.js has ${exportNames.length} exports. Check console.`, "World Population Manager");
-    } catch (error) {
-        console.error(`[${extensionName}] Failed to import world-info.js:`, error);
-        toastr.error("Failed to import world-info.js - check console for the exact error/path issue.", "World Population Manager");
+    if (characterCard) {
+        lines.push("--- WORLD / CHARACTER CARD CONTEXT ---");
+        if (characterCard.name) lines.push(`Main character: ${characterCard.name}`);
+        if (characterCard.description) lines.push(`Description: ${characterCard.description}`);
+        if (characterCard.scenario) lines.push(`Scenario: ${characterCard.scenario}`);
+        lines.push("");
     }
-}
 
-async function onInspectWorldInfoSignaturesClick() {
-    try {
-        const worldInfoModule = await import("../../../world-info.js");
-
-        const functionsToInspect = [
-            "createWorldInfoEntry",
-            "saveWorldInfo",
-            "loadWorldInfo",
-            "createNewWorldInfo",
-            "newWorldInfoEntryTemplate",
-            "newWorldInfoEntryDefinition",
-            "assignLorebookToChat",
-            "getFreeWorldName",
-            "world_names",
-        ];
-
-        for (const fnName of functionsToInspect) {
-            const value = worldInfoModule[fnName];
-            if (typeof value === "function") {
-                console.log(`[${extensionName}] --- ${fnName} (function source) ---\n` + value.toString());
-            } else {
-                console.log(`[${extensionName}] --- ${fnName} (not a function, value) ---`, value);
-            }
+    if (chatHistory && chatHistory.length > 0) {
+        lines.push("--- RECENT CHAT ---");
+        for (const m of chatHistory) {
+            lines.push(`${m.name}: ${m.mes}`);
         }
-
-        toastr.info("Printed function signatures/values to console.", "World Population Manager");
-    } catch (error) {
-        console.error(`[${extensionName}] Failed to inspect world-info.js signatures:`, error);
-        toastr.error("Failed to inspect signatures - check console.", "World Population Manager");
+        lines.push("");
     }
+
+    lines.push("--- YOUR TASK ---");
+    lines.push("Based on the current location, conversation, and activity, decide whether it would be natural for a new background character to appear or be mentioned RIGHT NOW.");
+    lines.push("Be conservative - most moments should NOT introduce anyone new. Only recommend it when the scene genuinely calls for it (e.g. entering a new populated location, a name is mentioned, someone is clearly expected).");
+    lines.push("");
+    lines.push('If nobody new should appear, output EXACTLY: NONE');
+    lines.push("If someone should appear, output a single short sentence describing what kind of person and why (not a name, just a description and reason).");
+    lines.push("Output ONLY that - no preamble, no explanation, no formatting.");
+
+    return lines.join("\n");
 }
 
-async function onTestAiClick() {
+async function onAnalyzeSceneClick() {
+    const generationContext = gatherGenerationContext(0, "");
+    const prompt = buildSceneAnalysisPrompt(generationContext);
+
+    console.log(`[${extensionName}] Scene analysis prompt:`, prompt);
+    toastr.info("Analyzing scene, check console...", "World Population Manager");
+
     const context = getContext();
-
-    if (typeof context.generateQuietPrompt !== "function") {
-        console.warn(`[${extensionName}] context.generateQuietPrompt is not a function - hypothesis failed, need another approach.`);
-        toastr.warning("generateQuietPrompt not found on context - check console for details.", "World Population Manager");
-        return;
-    }
-
-    const testPrompt = [
-        "[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]",
-        "You are not a character in this story right now. You are a data-generation tool.",
-        "Ignore everything happening in the current scene.",
-        "Your ONLY task: output exactly one word and nothing else, no narration, no dialogue, no formatting: PONG",
-    ].join("\n");
-
-    console.log(`[${extensionName}] Sending stronger override test prompt to AI...`);
-    toastr.info("Sending test prompt to the AI, check console...", "World Population Manager");
 
     try {
         const result = await context.generateQuietPrompt({
-            quietPrompt: testPrompt,
+            quietPrompt: prompt,
             skipWIAN: true,
             quietToLoud: false,
         });
-        console.log(`[${extensionName}] AI test response:`, result);
-        toastr.success(`AI responded: ${String(result).slice(0, 200)}`, "World Population Manager - Test OK");
+        console.log(`[${extensionName}] Scene analysis result:`, result);
+
+        const trimmed = String(result).trim();
+        if (trimmed.toUpperCase().startsWith("NONE")) {
+            toastr.info("Scene analysis: no new NPCs recommended.", "World Population Manager");
+        } else {
+            toastr.success(`Scene analysis recommends: ${trimmed}`, "World Population Manager");
+        }
     } catch (error) {
-        console.error(`[${extensionName}] generateQuietPrompt threw an error:`, error);
-        toastr.error("generateQuietPrompt threw an error - check console.", "World Population Manager");
+        console.error(`[${extensionName}] Scene analysis failed:`, error);
+        toastr.error("Scene analysis failed - check console.", "World Population Manager");
     }
 }
 
@@ -529,10 +508,7 @@ jQuery(async () => {
         $("#wpm_generate_characters").on("click", openGeneratePopup);
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
-        $("#wpm_test_ai").on("click", onTestAiClick);
-        $("#wpm_inspect_context").on("click", onInspectContextClick);
-        $("#wpm_inspect_worldinfo").on("click", onInspectWorldInfoModuleClick);
-        $("#wpm_inspect_wi_signatures").on("click", onInspectWorldInfoSignaturesClick);
+        $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
