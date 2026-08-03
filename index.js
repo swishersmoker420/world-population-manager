@@ -751,22 +751,21 @@ async function onInspectCharWorldFunctionsClick() {
     }
 }
 
-// Automatically run the scene pipeline right when generation starts, so the
-// injection is (hopefully) in place before the prompt is compiled.
-// TRIED SO FAR:
-// - MESSAGE_SENT: fires, but doesn't block the real generation - injection
-//   landed one full turn too late (confirmed by testing: asking for a girl
-//   didn't inject until the NEXT message).
-// - GENERATE_BEFORE_COMBINE_PROMPTS: never fired at all in testing.
-// Now trying GENERATION_STARTED as the next hypothesis.
-if (event_types && event_types.GENERATION_STARTED) {
-    eventSource.on(event_types.GENERATION_STARTED, async () => {
-        console.log(`[${extensionName}] GENERATION_STARTED fired - running scene pipeline...`);
-        await runScenePipeline(false);
+// Automatically run the scene pipeline whenever the user sends a message,
+// so it's already injected before the AI's response generates - same
+// end result as manually clicking "Analyze Scene" beforehand.
+// NOTE: GENERATE_BEFORE_COMBINE_PROMPTS was tried instead and never fired in
+// testing, so reverted back to MESSAGE_SENT. This has a known timing risk
+// (the main generation may not wait for our background analysis to finish
+// before compiling its prompt) which still needs troubleshooting.
+if (event_types && event_types.MESSAGE_SENT) {
+    eventSource.on(event_types.MESSAGE_SENT, () => {
+        console.log(`[${extensionName}] MESSAGE_SENT event fired - starting automatic scene pipeline...`);
+        runScenePipeline(false);
     });
-    console.log(`[${extensionName}] Registered GENERATION_STARTED listener for automatic scene analysis.`);
+    console.log(`[${extensionName}] Registered MESSAGE_SENT listener for automatic scene analysis.`);
 } else {
-    console.warn(`[${extensionName}] event_types.GENERATION_STARTED not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
+    console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
 }
 
 jQuery(async () => {
