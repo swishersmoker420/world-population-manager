@@ -557,9 +557,6 @@ function updateActiveNpcInjection(namesText, npcs) {
 
 let isScenePipelineRunning = false;
 
-// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
-// automatic trigger. showToasts=false is used for the automatic path so it
-// doesn't spam notifications on every message; it still logs everything.
 async function runScenePipeline(showToasts) {
     if (isScenePipelineRunning) {
         console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
@@ -654,8 +651,6 @@ async function onAnalyzeSceneClick() {
     await runScenePipeline(true);
 }
 
-// Reads which lorebook is bound to the current chat, the same way SillyTavern's
-// own "chat lorebook" feature does (chat_metadata[METADATA_KEY]).
 async function getBoundLorebookName() {
     const worldInfoModule = await import("../../../world-info.js");
     const { METADATA_KEY } = worldInfoModule;
@@ -663,9 +658,6 @@ async function getBoundLorebookName() {
     return context.chatMetadata ? context.chatMetadata[METADATA_KEY] : null;
 }
 
-// Loads every entry from the chat's bound lorebook, treating entry.comment as
-// the NPC's name and entry.content as their sheet. This IS effectively the
-// NPC index for now - a dedicated shorter summary index is a future upgrade.
 async function getAllNpcsFromBoundLorebook() {
     const worldName = await getBoundLorebookName();
     if (!worldName) {
@@ -751,22 +743,12 @@ async function onInspectCharWorldFunctionsClick() {
     }
 }
 
-// Automatically run the scene pipeline whenever the user sends a message,
-// so it's already injected before the AI's response generates - same
-// end result as manually clicking "Analyze Scene" beforehand.
-// NOTE: GENERATE_BEFORE_COMBINE_PROMPTS was tried instead and never fired in
-// testing, so reverted back to MESSAGE_SENT. This has a known timing risk
-// (the main generation may not wait for our background analysis to finish
-// before compiling its prompt) which still needs troubleshooting.
-if (event_types && event_types.MESSAGE_SENT) {
-    eventSource.on(event_types.MESSAGE_SENT, () => {
-        console.log(`[${extensionName}] MESSAGE_SENT event fired - starting automatic scene pipeline...`);
-        runScenePipeline(false);
-    });
-    console.log(`[${extensionName}] Registered MESSAGE_SENT listener for automatic scene analysis.`);
-} else {
-    console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
-}
+// Automatic triggering was removed entirely - MESSAGE_SENT, GENERATE_BEFORE_COMBINE_PROMPTS,
+// and GENERATION_STARTED were all tried and each had reliability problems
+// (wrong timing, never firing, or racing with the real generation). The
+// "Analyze Scene" button worked flawlessly in manual testing, so that's the
+// supported way to use the scene pipeline for now: click it before sending
+// a message that should introduce someone.
 
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
