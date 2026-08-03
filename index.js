@@ -625,6 +625,30 @@ function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
     return lines.join("\n");
 }
 
+async function onInspectSetExtensionPromptClick() {
+    const context = getContext();
+
+    if (typeof context.setExtensionPrompt !== "function") {
+        console.warn(`[${extensionName}] context.setExtensionPrompt is not a function.`);
+        toastr.warning("setExtensionPrompt not found on context - check console.", "World Population Manager");
+        return;
+    }
+
+    console.log(`[${extensionName}] --- setExtensionPrompt (function source) ---\n` + context.setExtensionPrompt.toString());
+
+    // Also check for related exports that usually travel with it
+    const relatedKeys = ["extension_prompt_types", "extensionPrompts", "extension_prompt_roles"];
+    for (const key of relatedKeys) {
+        if (context[key] !== undefined) {
+            console.log(`[${extensionName}] context.${key}:`, context[key]);
+        } else {
+            console.log(`[${extensionName}] context.${key} is undefined`);
+        }
+    }
+
+    toastr.info("Printed setExtensionPrompt source to console.", "World Population Manager");
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -637,6 +661,7 @@ jQuery(async () => {
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
+        $("#wpm_inspect_setext").on("click", onInspectSetExtensionPromptClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
