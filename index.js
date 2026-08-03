@@ -618,6 +618,14 @@ async function runScenePipeline(showToasts) {
 
         const trimmedDirector = String(directorResult).trim();
 
+        // Sanity check: a real decision should be short (just names or NONE).
+        // If it's suspiciously long, the model likely broke character and
+        // narrated instead of deciding - flag it clearly rather than silently
+        // falling through to "no match".
+        if (trimmedDirector.length > 200) {
+            console.warn(`[${extensionName}] NPC Director output looks like narrative, not a clean decision (${trimmedDirector.length} chars). The override prompt may need to be strengthened further.`);
+        }
+
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
             // Nobody existing fits - just clear the injection and do nothing
             // further. Auto-creating and saving a brand new NPC without the
@@ -686,8 +694,8 @@ function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
     const lines = [];
 
     lines.push("[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]");
-    lines.push("You are not a character in this story right now. You are a casting director tool.");
-    lines.push("Do not narrate, do not roleplay, do not invent new characters.");
+    lines.push("You are not a character in this story right now. You are a casting director tool, not a narrator.");
+    lines.push("Ignore the current scene's events, dialogue, and momentum entirely. Do not narrate, do not roleplay, do not write dialogue as any character, do not invent new characters.");
     lines.push("");
     lines.push("--- SCENE RECOMMENDATION ---");
     lines.push(sceneRecommendation);
@@ -701,9 +709,14 @@ function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
     lines.push("--- YOUR TASK ---");
     lines.push("Decide whether any of the EXISTING NPCs listed above naturally fit the scene recommendation.");
     lines.push("Do NOT invent a new character, even if none of the existing ones fit perfectly.");
+    lines.push("Do NOT write any narration, scene description, or dialogue.");
     lines.push("If one or more existing NPCs fit, output their exact name(s) from the list above, one per line, and nothing else.");
     lines.push("If none of them genuinely fit, output EXACTLY: NONE");
-    lines.push("Output ONLY names or NONE - no explanation, no formatting.");
+    lines.push("");
+    lines.push("REMINDER - your entire response must be ONLY one of these two things, nothing else:");
+    lines.push("- One or more exact names from the list above (one per line), OR");
+    lines.push("- The single word: NONE");
+    lines.push("No narration. No dialogue. No formatting. No explanation.");
 
     return lines.join("\n");
 }
