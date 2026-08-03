@@ -367,10 +367,11 @@ async function onInspectContextClick() {
 
 // getContext() didn't expose world-info functions directly, but we saw
 // "world-info.js:4990 [WI] ..." log lines earlier, confirming that file exists.
-// Try dynamically importing it directly and inspect what it actually exports.
+// First attempt (4 levels up, same depth as script.js) 404'd, so world-info.js
+// is not at server root - trying 3 levels up (inside a scripts/ subfolder) instead.
 async function onInspectWorldInfoModuleClick() {
     try {
-        const worldInfoModule = await import("../../../../world-info.js");
+        const worldInfoModule = await import("../../../world-info.js");
         const exportNames = Object.keys(worldInfoModule);
 
         console.log(`[${extensionName}] world-info.js module:`, worldInfoModule);
