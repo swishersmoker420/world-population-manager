@@ -384,6 +384,40 @@ async function onInspectWorldInfoModuleClick() {
     }
 }
 
+// Now that we know the export names, print the actual source of the ones we
+// likely need so we can see their real parameters instead of guessing.
+async function onInspectWorldInfoSignaturesClick() {
+    try {
+        const worldInfoModule = await import("../../../world-info.js");
+
+        const functionsToInspect = [
+            "createWorldInfoEntry",
+            "saveWorldInfo",
+            "loadWorldInfo",
+            "createNewWorldInfo",
+            "newWorldInfoEntryTemplate",
+            "newWorldInfoEntryDefinition",
+            "assignLorebookToChat",
+            "getFreeWorldName",
+            "world_names",
+        ];
+
+        for (const fnName of functionsToInspect) {
+            const value = worldInfoModule[fnName];
+            if (typeof value === "function") {
+                console.log(`[${extensionName}] --- ${fnName} (function source) ---\n` + value.toString());
+            } else {
+                console.log(`[${extensionName}] --- ${fnName} (not a function, value) ---`, value);
+            }
+        }
+
+        toastr.info("Printed function signatures/values to console.", "World Population Manager");
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to inspect world-info.js signatures:`, error);
+        toastr.error("Failed to inspect signatures - check console.", "World Population Manager");
+    }
+}
+
 async function onTestAiClick() {
     const context = getContext();
 
@@ -431,6 +465,7 @@ jQuery(async () => {
         $("#wpm_test_ai").on("click", onTestAiClick);
         $("#wpm_inspect_context").on("click", onInspectContextClick);
         $("#wpm_inspect_worldinfo").on("click", onInspectWorldInfoModuleClick);
+        $("#wpm_inspect_wi_signatures").on("click", onInspectWorldInfoSignaturesClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
