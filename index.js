@@ -557,6 +557,9 @@ function updateActiveNpcInjection(namesText, npcs) {
 
 let isScenePipelineRunning = false;
 
+// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
+// automatic trigger. showToasts=false is used for the automatic path so it
+// doesn't spam notifications on every message; it still logs everything.
 async function runScenePipeline(showToasts) {
     if (isScenePipelineRunning) {
         console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
@@ -616,6 +619,11 @@ async function runScenePipeline(showToasts) {
         const trimmedDirector = String(directorResult).trim();
 
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
+            // Nobody existing fits - just clear the injection and do nothing
+            // further. Auto-creating and saving a brand new NPC without the
+            // user asking for it would silently clutter their lorebook.
+            // If a new NPC is genuinely wanted, that's what Generate
+            // Characters is for.
             updateActiveNpcInjection("", npcs);
             if (showToasts) toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Nothing injected.`, "World Population Manager");
         } else {
@@ -648,7 +656,8 @@ async function getBoundLorebookName() {
 }
 
 // Loads every entry from the chat's bound lorebook, treating entry.comment as
-// the NPC's name and entry.content as their sheet.
+// the NPC's name and entry.content as their sheet. This IS effectively the
+// NPC index for now - a dedicated shorter summary index is a future upgrade.
 async function getAllNpcsFromBoundLorebook() {
     const worldName = await getBoundLorebookName();
     if (!worldName) {
@@ -716,15 +725,32 @@ function onInspectEventTypesClick() {
     toastr.info("Printed event_types to console.", "World Population Manager");
 }
 
-// Automatically run the scene pipeline whenever the user sends a message.
-if (event_types && event_types.MESSAGE_SENT) {
-    eventSource.on(event_types.MESSAGE_SENT, () => {
-        console.log(`[${extensionName}] MESSAGE_SENT event fired - starting automatic scene pipeline...`);
-        runScenePipeline(false);
+async function onInspectCharWorldFunctionsClick() {
+    try {
+        const wi = await import("../../../world-info.js");
+        const names = ["charUpdatePrimaryWorld", "charSetAuxWorlds", "charUpdateAddAuxWorld"];
+        for (const name of names) {
+            console.log(`[${extensionName}] --- ${name} (function source) ---\n` + (wi[name] ? wi[name].toString() : "not found"));
+        }
+        toastr.info("Printed character-world function signatures to console.", "World Population Manager");
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to inspect:`, error);
+    }
+}
+
+// Automatically run the scene pipeline right before SillyTavern combines the
+// final prompt for the real generation - MESSAGE_SENT fired too early (the
+// main generation didn't wait for our background analysis to finish, so the
+// injection landed after the response already started). This hook should be
+// the last safe point to set extension prompts before they're read.
+if (event_types && event_types.GENERATE_BEFORE_COMBINE_PROMPTS) {
+    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, async () => {
+        console.log(`[${extensionName}] GENERATE_BEFORE_COMBINE_PROMPTS fired - running scene pipeline...`);
+        await runScenePipeline(false);
     });
-    console.log(`[${extensionName}] Registered MESSAGE_SENT listener for automatic scene analysis.`);
+    console.log(`[${extensionName}] Registered GENERATE_BEFORE_COMBINE_PROMPTS listener for automatic scene analysis.`);
 } else {
-    console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
+    console.warn(`[${extensionName}] event_types.GENERATE_BEFORE_COMBINE_PROMPTS not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
 }
 
 jQuery(async () => {
@@ -741,6 +767,7 @@ jQuery(async () => {
         $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
         $("#wpm_inspect_reload").on("click", onInspectReloadEditorClick);
         $("#wpm_inspect_events").on("click", onInspectEventTypesClick);
+        $("#wpm_inspect_char_world").on("click", onInspectCharWorldFunctionsClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
