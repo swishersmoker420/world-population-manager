@@ -322,16 +322,66 @@ function parseNpcBlocks(rawText) {
     });
 }
 
+// Saves parsed NPCs as real lorebook entries. Only creates a new lorebook if
+// the name genuinely doesn't exist yet, to avoid createNewWorldInfo's
+// overwrite-existing-data behavior touching something the user already has.
+async function saveNpcsToLorebook(worldName, parsedNpcs) {
+    const worldInfoModule = await import("../../../world-info.js");
+    const { loadWorldInfo, saveWorldInfo, createWorldInfoEntry, createNewWorldInfo, world_names } = worldInfoModule;
+
+    const exists = world_names.includes(worldName);
+
+    if (!exists) {
+        console.log(`[${extensionName}] Lorebook "${worldName}" doesn't exist yet, creating it...`);
+        const created = await createNewWorldInfo(worldName, { interactive: false });
+        if (!created) {
+            throw new Error(`Failed to create lorebook "${worldName}"`);
+        }
+    }
+
+    const data = await loadWorldInfo(worldName);
+    if (!data) {
+        throw new Error(`Failed to load lorebook "${worldName}"`);
+    }
+    if (!data.entries) {
+        data.entries = {};
+    }
+
+    let savedCount = 0;
+    for (const npc of parsedNpcs) {
+        const entry = createWorldInfoEntry(worldName, data);
+        if (!entry) {
+            console.warn(`[${extensionName}] Failed to create entry for NPC:`, npc.name);
+            continue;
+        }
+        entry.comment = npc.name;
+        entry.key = [npc.name];
+        entry.content = npc.rawContent;
+        savedCount++;
+    }
+
+    await saveWorldInfo(worldName, data, true);
+    console.log(`[${extensionName}] Saved ${savedCount} NPC(s) to lorebook "${worldName}"`, data);
+
+    return savedCount;
+}
+
 async function onGenerateConfirm() {
     const count = Number($("#wpm_char_count").val());
     const instructions = String($("#wpm_generate_instructions").val());
+    const lorebookName = String($("#wpm_lorebook_name").val()).trim();
+
+    if (!lorebookName) {
+        toastr.warning("Enter a lorebook name to save NPCs into.", "World Population Manager");
+        return;
+    }
 
     const generationContext = gatherGenerationContext(count, instructions);
     const prompt = buildGenerationPrompt(generationContext);
 
     console.log(`[${extensionName}] Full generation prompt being sent:`, prompt);
     closeGeneratePopup();
-    toastr.info(`Generating ${count} NPC(s), this may take a moment. Check console for raw output.`, "World Population Manager");
+    toastr.info(`Generating ${count} NPC(s), this may take a moment.`, "World Population Manager");
 
     const context = getContext();
 
@@ -346,10 +396,16 @@ async function onGenerateConfirm() {
         const parsedNpcs = parseNpcBlocks(result);
         console.log(`[${extensionName}] Parsed ${parsedNpcs.length} NPC(s) (requested ${count}):`, parsedNpcs);
 
-        toastr.success(`Parsed ${parsedNpcs.length}/${count} NPC(s). Check console to verify accuracy (not saved as lorebooks yet).`, "World Population Manager");
+        if (parsedNpcs.length === 0) {
+            toastr.error("No NPCs could be parsed from the AI output - check console.", "World Population Manager");
+            return;
+        }
+
+        const savedCount = await saveNpcsToLorebook(lorebookName, parsedNpcs);
+        toastr.success(`Saved ${savedCount}/${count} NPC(s) to lorebook "${lorebookName}".`, "World Population Manager");
     } catch (error) {
-        console.error(`[${extensionName}] Generation failed:`, error);
-        toastr.error("Generation failed - check console.", "World Population Manager");
+        console.error(`[${extensionName}] Generation/save failed:`, error);
+        toastr.error("Generation or save failed - check console.", "World Population Manager");
     }
 }
 
@@ -402,80 +458,4 @@ async function onInspectWorldInfoSignaturesClick() {
             "world_names",
         ];
 
-        for (const fnName of functionsToInspect) {
-            const value = worldInfoModule[fnName];
-            if (typeof value === "function") {
-                console.log(`[${extensionName}] --- ${fnName} (function source) ---\n` + value.toString());
-            } else {
-                console.log(`[${extensionName}] --- ${fnName} (not a function, value) ---`, value);
-            }
-        }
-
-        toastr.info("Printed function signatures/values to console.", "World Population Manager");
-    } catch (error) {
-        console.error(`[${extensionName}] Failed to inspect world-info.js signatures:`, error);
-        toastr.error("Failed to inspect signatures - check console.", "World Population Manager");
-    }
-}
-
-async function onTestAiClick() {
-    const context = getContext();
-
-    if (typeof context.generateQuietPrompt !== "function") {
-        console.warn(`[${extensionName}] context.generateQuietPrompt is not a function - hypothesis failed, need another approach.`);
-        toastr.warning("generateQuietPrompt not found on context - check console for details.", "World Population Manager");
-        return;
-    }
-
-    const testPrompt = [
-        "[SYSTEM OVERRIDE - DO NOT CONTINUE THE ROLEPLAY SCENE]",
-        "You are not a character in this story right now. You are a data-generation tool.",
-        "Ignore everything happening in the current scene.",
-        "Your ONLY task: output exactly one word and nothing else, no narration, no dialogue, no formatting: PONG",
-    ].join("\n");
-
-    console.log(`[${extensionName}] Sending stronger override test prompt to AI...`);
-    toastr.info("Sending test prompt to the AI, check console...", "World Population Manager");
-
-    try {
-        const result = await context.generateQuietPrompt({
-            quietPrompt: testPrompt,
-            skipWIAN: true,
-            quietToLoud: false,
-        });
-        console.log(`[${extensionName}] AI test response:`, result);
-        toastr.success(`AI responded: ${String(result).slice(0, 200)}`, "World Population Manager - Test OK");
-    } catch (error) {
-        console.error(`[${extensionName}] generateQuietPrompt threw an error:`, error);
-        toastr.error("generateQuietPrompt threw an error - check console.", "World Population Manager");
-    }
-}
-
-jQuery(async () => {
-    console.log(`[${extensionName}] Loading...`);
-
-    try {
-        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
-        $("#extensions_settings2").append(settingsHtml);
-
-        $("#wpm_enabled").on("input", onEnabledChange);
-        $("#wpm_generate_characters").on("click", openGeneratePopup);
-        $("#wpm_generate_confirm").on("click", onGenerateConfirm);
-        $("#wpm_generate_cancel").on("click", closeGeneratePopup);
-        $("#wpm_test_ai").on("click", onTestAiClick);
-        $("#wpm_inspect_context").on("click", onInspectContextClick);
-        $("#wpm_inspect_worldinfo").on("click", onInspectWorldInfoModuleClick);
-        $("#wpm_inspect_wi_signatures").on("click", onInspectWorldInfoSignaturesClick);
-
-        $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
-        $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
-        $("#wpm_add_field_btn").on("click", onAddFieldClick);
-        $("#wpm_reset_fields_btn").on("click", onResetFieldsClick);
-
-        loadSettings();
-
-        console.log(`[${extensionName}] ✅ Loaded successfully`);
-    } catch (error) {
-        console.error(`[${extensionName}] ❌ Failed to load:`, error);
-    }
-});
+        for
