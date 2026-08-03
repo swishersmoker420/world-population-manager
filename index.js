@@ -547,16 +547,27 @@ function updateActiveNpcInjection(namesText, npcs) {
     return matchedNpcs;
 }
 
-async function onAnalyzeSceneClick() {
-    const generationContext = gatherGenerationContext(0, "");
-    const prompt = buildSceneAnalysisPrompt(generationContext);
+let isScenePipelineRunning = false;
 
-    console.log(`[${extensionName}] Scene analysis prompt:`, prompt);
-    toastr.info("Analyzing scene, check console...", "World Population Manager");
-
-    const context = getContext();
+// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
+// automatic trigger. showToasts=false is used for the automatic path so it
+// doesn't spam notifications on every message; it still logs everything.
+async function runScenePipeline(showToasts) {
+    if (isScenePipelineRunning) {
+        console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
+        return;
+    }
+    isScenePipelineRunning = true;
 
     try {
+        const generationContext = gatherGenerationContext(0, "");
+        const prompt = buildSceneAnalysisPrompt(generationContext);
+
+        console.log(`[${extensionName}] Scene analysis prompt:`, prompt);
+        if (showToasts) toastr.info("Analyzing scene, check console...", "World Population Manager");
+
+        const context = getContext();
+
         const analysisResult = await context.generateQuietPrompt({
             quietPrompt: prompt,
             skipWIAN: true,
@@ -567,23 +578,23 @@ async function onAnalyzeSceneClick() {
         const trimmedAnalysis = String(analysisResult).trim();
 
         if (trimmedAnalysis.toUpperCase().startsWith("NONE")) {
-            toastr.info("Scene analysis: no new NPCs recommended.", "World Population Manager");
+            if (showToasts) toastr.info("Scene analysis: no new NPCs recommended.", "World Population Manager");
             return;
         }
 
-        toastr.info(`Scene analysis recommends: ${trimmedAnalysis}. Checking existing NPCs...`, "World Population Manager");
+        if (showToasts) toastr.info(`Scene analysis recommends: ${trimmedAnalysis}. Checking existing NPCs...`, "World Population Manager");
 
         // --- Stage 2: NPC Director ---
         const { worldName, npcs } = await getAllNpcsFromBoundLorebook();
 
         if (!worldName) {
-            toastr.warning("No lorebook is bound to this chat, so there's no NPC list to pick from.", "World Population Manager");
             console.warn(`[${extensionName}] No bound lorebook found (chat_metadata[METADATA_KEY] is empty).`);
+            if (showToasts) toastr.warning("No lorebook is bound to this chat, so there's no NPC list to pick from.", "World Population Manager");
             return;
         }
 
         if (npcs.length === 0) {
-            toastr.warning(`Bound lorebook "${worldName}" has no NPC entries yet.`, "World Population Manager");
+            if (showToasts) toastr.warning(`Bound lorebook "${worldName}" has no NPC entries yet.`, "World Population Manager");
             return;
         }
 
@@ -601,19 +612,25 @@ async function onAnalyzeSceneClick() {
 
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
             updateActiveNpcInjection("", npcs);
-            toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Would need Generate Characters instead.`, "World Population Manager");
+            if (showToasts) toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Would need Generate Characters instead.`, "World Population Manager");
         } else {
             const matchedNpcs = updateActiveNpcInjection(trimmedDirector, npcs);
             if (matchedNpcs.length === 0) {
-                toastr.warning(`Director said "${trimmedDirector}" but that didn't match any real NPC name - nothing injected.`, "World Population Manager");
+                if (showToasts) toastr.warning(`Director said "${trimmedDirector}" but that didn't match any real NPC name - nothing injected.`, "World Population Manager");
             } else {
-                toastr.success(`Injected into scene: ${matchedNpcs.map(n => n.name).join(", ")}. They'll be present in your next message.`, "World Population Manager");
+                toastr.success(`${matchedNpcs.map(n => n.name).join(", ")} will join the scene.`, "World Population Manager");
             }
         }
     } catch (error) {
         console.error(`[${extensionName}] Scene pipeline failed:`, error);
-        toastr.error("Scene pipeline failed - check console.", "World Population Manager");
+        if (showToasts) toastr.error("Scene pipeline failed - check console.", "World Population Manager");
+    } finally {
+        isScenePipelineRunning = false;
     }
+}
+
+async function onAnalyzeSceneClick() {
+    await runScenePipeline(true);
 }
 
 // Reads which lorebook is bound to the current chat, the same way SillyTavern's
@@ -678,6 +695,28 @@ function buildNpcDirectorPrompt(sceneRecommendation, npcs) {
     return lines.join("\n");
 }
 
+async function onInspectReloadEditorClick() {
+    try {
+        const wi = await import("../../../world-info.js");
+        console.log(`[${extensionName}] reloadEditor source:`, wi.reloadEditor ? wi.reloadEditor.toString() : "not found");
+        console.log(`[${extensionName}] updateWorldInfoList source:`, wi.updateWorldInfoList ? wi.updateWorldInfoList.toString() : "not found");
+        toastr.info("Printed reloadEditor/updateWorldInfoList source to console.", "World Population Manager");
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to inspect:`, error);
+    }
+}
+
+// Automatically run the scene pipeline whenever the user sends a message,
+// so it's already injected before the AI's response generates - same
+// end result as manually clicking "Analyze Scene" beforehand.
+if (event_types && event_types.MESSAGE_SENT) {
+    eventSource.on(event_types.MESSAGE_SENT, () => {
+        runScenePipeline(false);
+    });
+} else {
+    console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -690,6 +729,7 @@ jQuery(async () => {
         $("#wpm_generate_confirm").on("click", onGenerateConfirm);
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_analyze_scene").on("click", onAnalyzeSceneClick);
+        $("#wpm_inspect_reload").on("click", onInspectReloadEditorClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
