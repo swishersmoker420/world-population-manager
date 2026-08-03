@@ -97,6 +97,7 @@ function onFieldNameChange(event) {
     const newValue = String($(event.target).val()).trim();
 
     if (!newValue) {
+        // Don't allow blank field names - revert display on next render
         toastr.warning("Field name can't be empty.", "World Population Manager");
         renderFieldsList();
         return;
@@ -309,6 +310,7 @@ function parseNpcBlocks(rawText) {
             }
         }
 
+        // Try to find a name field regardless of exact casing/label the user chose
         const nameField = currentFields.find(f => f.toLowerCase() === "name");
         const name = (nameField && fields[nameField]) || "Unnamed NPC";
 
@@ -363,6 +365,24 @@ async function onInspectContextClick() {
     toastr.info(`Found ${worldRelatedKeys.length} world/lorebook-related keys. Check console.`, "World Population Manager");
 }
 
+// getContext() didn't expose world-info functions directly, but we saw
+// "world-info.js:4990 [WI] ..." log lines earlier, confirming that file exists.
+// Try dynamically importing it directly and inspect what it actually exports.
+async function onInspectWorldInfoModuleClick() {
+    try {
+        const worldInfoModule = await import("../../../../world-info.js");
+        const exportNames = Object.keys(worldInfoModule);
+
+        console.log(`[${extensionName}] world-info.js module:`, worldInfoModule);
+        console.log(`[${extensionName}] world-info.js export names:`, exportNames);
+
+        toastr.info(`world-info.js has ${exportNames.length} exports. Check console.`, "World Population Manager");
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to import world-info.js:`, error);
+        toastr.error("Failed to import world-info.js - check console for the exact error/path issue.", "World Population Manager");
+    }
+}
+
 async function onTestAiClick() {
     const context = getContext();
 
@@ -409,6 +429,7 @@ jQuery(async () => {
         $("#wpm_generate_cancel").on("click", closeGeneratePopup);
         $("#wpm_test_ai").on("click", onTestAiClick);
         $("#wpm_inspect_context").on("click", onInspectContextClick);
+        $("#wpm_inspect_worldinfo").on("click", onInspectWorldInfoModuleClick);
 
         $("#wpm_fields_list").on("change", ".wpm-field-name-input", onFieldNameChange);
         $("#wpm_fields_list").on("click", ".wpm-remove-field-btn", onRemoveFieldClick);
