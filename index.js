@@ -545,6 +545,9 @@ function updateActiveNpcInjection(namesText, npcs) {
 
 let isScenePipelineRunning = false;
 
+// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
+// automatic trigger. showToasts=false is used for the automatic path so it
+// doesn't spam notifications on every message; it still logs everything.
 async function runScenePipeline(showToasts) {
     if (isScenePipelineRunning) {
         console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
@@ -604,8 +607,13 @@ async function runScenePipeline(showToasts) {
         const trimmedDirector = String(directorResult).trim();
 
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
+            // Nobody existing fits - just clear the injection and do nothing
+            // further. Auto-creating and saving a brand new NPC without the
+            // user asking for it would silently clutter their lorebook.
+            // If a new NPC is genuinely wanted, that's what Generate
+            // Characters is for.
             updateActiveNpcInjection("", npcs);
-            if (showToasts) toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Would need Generate Characters instead.`, "World Population Manager");
+            if (showToasts) toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Nothing injected.`, "World Population Manager");
         } else {
             const matchedNpcs = updateActiveNpcInjection(trimmedDirector, npcs);
             if (matchedNpcs.length === 0) {
@@ -626,6 +634,8 @@ async function onAnalyzeSceneClick() {
     await runScenePipeline(true);
 }
 
+// Reads which lorebook is bound to the current chat, the same way SillyTavern's
+// own "chat lorebook" feature does (chat_metadata[METADATA_KEY]).
 async function getBoundLorebookName() {
     const worldInfoModule = await import("../../../world-info.js");
     const { METADATA_KEY } = worldInfoModule;
@@ -633,6 +643,9 @@ async function getBoundLorebookName() {
     return context.chatMetadata ? context.chatMetadata[METADATA_KEY] : null;
 }
 
+// Loads every entry from the chat's bound lorebook, treating entry.comment as
+// the NPC's name and entry.content as their sheet. This IS effectively the
+// NPC index for now - a dedicated shorter summary index is a future upgrade.
 async function getAllNpcsFromBoundLorebook() {
     const worldName = await getBoundLorebookName();
     if (!worldName) {
@@ -700,13 +713,13 @@ function onInspectEventTypesClick() {
     toastr.info("Printed event_types to console.", "World Population Manager");
 }
 
-// Automatically run the scene pipeline whenever the user sends a message,
-// so it's already injected before the AI's response generates - same
-// end result as manually clicking "Analyze Scene" beforehand.
+// Automatically run the scene pipeline whenever the user sends a message.
 if (event_types && event_types.MESSAGE_SENT) {
     eventSource.on(event_types.MESSAGE_SENT, () => {
+        console.log(`[${extensionName}] MESSAGE_SENT event fired - starting automatic scene pipeline...`);
         runScenePipeline(false);
     });
+    console.log(`[${extensionName}] Registered MESSAGE_SENT listener for automatic scene analysis.`);
 } else {
     console.warn(`[${extensionName}] event_types.MESSAGE_SENT not found - automatic scene analysis won't trigger. Use the "Analyze Scene" button manually instead.`);
 }
