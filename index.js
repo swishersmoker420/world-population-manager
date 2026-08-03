@@ -387,34 +387,46 @@ async function saveNpcsToLorebook(worldName, parsedNpcs) {
 // the same mechanism SillyTavern's own "chat lorebook" feature uses. Called
 // automatically on every generation, unconditionally - the extension always
 // keeps the chat pointed at whichever lorebook it most recently saved NPCs
-// into, overwriting any previous binding (including stale ones from before
-// this behavior existed).
+// into, overwriting any previous binding.
+//
+// IMPORTANT: context.chatMetadata from getContext() was not reliably persisting
+// across refresh - mutating it didn't guarantee the change reached disk. Instead
+// we pull the actual chat_metadata reference directly from script.js (the same
+// object SillyTavern's own assignLorebookToChat mutates) and force an
+// IMMEDIATE (non-debounced) save so it's guaranteed written before anything
+// else happens.
 async function bindLorebookToChat(worldName) {
     const worldInfoModule = await import("../../../world-info.js");
     const { METADATA_KEY } = worldInfoModule;
 
-    const context = getContext();
-    if (!context.chatMetadata) {
-        console.warn(`[${extensionName}] context.chatMetadata not available - can't bind lorebook to chat.`);
+    const scriptModule = await import("../../../../script.js");
+    const chatMetadata = scriptModule.chat_metadata;
+
+    if (!chatMetadata) {
+        console.warn(`[${extensionName}] script.js chat_metadata export not found - can't bind lorebook to chat.`);
         return false;
     }
 
-    const previousBinding = context.chatMetadata[METADATA_KEY];
+    const previousBinding = chatMetadata[METADATA_KEY];
     if (previousBinding && previousBinding !== worldName) {
         console.log(`[${extensionName}] Replacing previously bound lorebook "${previousBinding}" with "${worldName}" for this chat.`);
     }
 
-    context.chatMetadata[METADATA_KEY] = worldName;
+    chatMetadata[METADATA_KEY] = worldName;
 
-    if (typeof context.saveMetadataDebounced === "function") {
-        context.saveMetadataDebounced();
-    } else if (typeof context.saveMetadata === "function") {
-        await context.saveMetadata();
+    if (typeof scriptModule.saveMetadata === "function") {
+        await scriptModule.saveMetadata();
+        console.log(`[${extensionName}] Bound lorebook "${worldName}" to current chat and saved immediately (METADATA_KEY: ${METADATA_KEY}).`);
     } else {
-        console.warn(`[${extensionName}] No saveMetadata function found on context - binding may not persist.`);
+        console.warn(`[${extensionName}] script.js saveMetadata export not found - falling back to getContext() save, may not persist reliably.`);
+        const context = getContext();
+        if (typeof context.saveMetadata === "function") {
+            await context.saveMetadata();
+        } else if (typeof context.saveMetadataDebounced === "function") {
+            context.saveMetadataDebounced();
+        }
     }
 
-    console.log(`[${extensionName}] Bound lorebook "${worldName}" to current chat (METADATA_KEY: ${METADATA_KEY}).`);
     return true;
 }
 
@@ -545,9 +557,6 @@ function updateActiveNpcInjection(namesText, npcs) {
 
 let isScenePipelineRunning = false;
 
-// Core Stage 1+2+3 pipeline, shared by the manual debug button and the
-// automatic trigger. showToasts=false is used for the automatic path so it
-// doesn't spam notifications on every message; it still logs everything.
 async function runScenePipeline(showToasts) {
     if (isScenePipelineRunning) {
         console.log(`[${extensionName}] Scene pipeline already running, skipping this trigger.`);
@@ -607,11 +616,6 @@ async function runScenePipeline(showToasts) {
         const trimmedDirector = String(directorResult).trim();
 
         if (trimmedDirector.toUpperCase().startsWith("NONE")) {
-            // Nobody existing fits - just clear the injection and do nothing
-            // further. Auto-creating and saving a brand new NPC without the
-            // user asking for it would silently clutter their lorebook.
-            // If a new NPC is genuinely wanted, that's what Generate
-            // Characters is for.
             updateActiveNpcInjection("", npcs);
             if (showToasts) toastr.info(`Scene called for someone, but no existing NPC in "${worldName}" fits. Nothing injected.`, "World Population Manager");
         } else {
@@ -644,8 +648,7 @@ async function getBoundLorebookName() {
 }
 
 // Loads every entry from the chat's bound lorebook, treating entry.comment as
-// the NPC's name and entry.content as their sheet. This IS effectively the
-// NPC index for now - a dedicated shorter summary index is a future upgrade.
+// the NPC's name and entry.content as their sheet.
 async function getAllNpcsFromBoundLorebook() {
     const worldName = await getBoundLorebookName();
     if (!worldName) {
