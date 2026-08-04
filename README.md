@@ -3,7 +3,6 @@
 A SillyTavern extension for maintaining a per-chat, AI-generated NPC population,
 built on top of SillyTavern's lorebook system.
 
-**Status: Stage 1 (bare minimum) — drawer only, no features yet.**
 
 ## Installation
 
